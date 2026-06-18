@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S&P 500 Options Skew Engine</title>
+    <!-- Google Fonts for premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --accent-primary: #6366f1; /* Indigo */
+            --accent-secondary: #06b6d4; /* Cyan */
+            --success: #10b981; /* Emerald Green */
+            --danger: #f43f5e; /* Rose Red */
+            --warning: #f59e0b; /* Amber */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --glass-blur: blur(12px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.12) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        /* Container & Grid layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 30px;
+        }
+
+        .logo-area h1 {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #6366f1, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-area p {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Tabs Navigation */
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            background: rgba(31, 41, 55, 0.5);
+            padding: 5px;
+            border-radius: 12px;
+            border: 1px solid var(--card-border);
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: var(--text-main);
+            background: var(--accent-primary);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Panels styling */
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Glass Cards */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-main);
+            border-left: 4px solid var(--accent-secondary);
+            padding-left: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Dashboard Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        /* Forms Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            background: rgba(31, 41, 55, 0.7);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+        }
+
+        /* Buttons styling */
+        .btn {
+            display: inline-block;
+            background: var(--accent-primary);
+            color: white;
+            padding: 11px 20px;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: rgba(31, 41, 55, 0.8);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(55, 65, 81, 0.8);
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: var(--success);
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4);
+        }
+
+        /* Stats Cards */
+        .stat-card {
+            background: rgba(17, 24, 39, 0.4);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 15px 20px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 26px;
+            font-weight: 700;
+            margin-top: 5px;
+            background: linear-gradient(to right, #ffffff, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-val.positive {
+            background: linear-gradient(to right, #34d399, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-val.negative {
+            background: linear-gradient(to right, #fb7185, #f43f5e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Trade logs table */
+        .table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(31, 41, 55, 0.8);
+            position: sticky;
+            top: 0;
+            padding: 12px 15px;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            color: var(--text-main);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-long {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-short {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        /* Simulator Widget styling */
+        .status-light {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+            background: var(--danger);
+            box-shadow: 0 0 8px var(--danger);
+        }
+
+        .status-light.active {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        /* Log console */
+        .terminal-log {
+            background: #060913;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 15px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: #34d399;
+            height: 250px;
+            overflow-y: auto;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+            padding-bottom: 5px;
+        }
+
+        .log-time {
+            color: var(--accent-secondary);
+        }
+
+        .log-warn {
+            color: var(--warning);
+        }
+        
+        .log-info {
+            color: #38bdf8;
+        }
+
+        .log-signal {
+            color: var(--danger);
+            font-weight: 700;
+        }
+
+        /* AI Commentary Card */
+        .commentary-box {
+            background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(6,182,212,0.06));
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text-main);
+            position: relative;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .commentary-icon {
+            font-size: 30px;
+            flex-shrink: 0;
+        }
+
+        .commentary-text {
+            font-style: italic;
+            color: #c7d2fe;
+        }
+
+        /* Status pill badges */
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .pill-green {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .pill-red {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .pill-amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        /* Signal alert banner */
+        .signal-banner {
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .signal-banner.bearish {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            color: #fca5a5;
+        }
+
+        .signal-banner.bullish {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.75; }
+        }
+
+        /* Positions table close btn */
+        .btn-close-pos {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-close-pos:hover {
+            background: rgba(244, 63, 94, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <div class="logo-area">
+            <h1>📊 S&P 500 Options Skew Engine</h1>
+            <p>Imran Lakha's 2-Week Skew Divergence Strategy & Schwab Kafka Feed</p>
+        </div>
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-historical')">Historical Data</button>
+            <button class="tab-btn" onclick="switchTab('tab-backtester')">Strategy Backtester</button>
+            <button class="tab-btn" onclick="switchTab('tab-simulator'); startLiveUpdate();">Live Kafka Feed</button>
+            <button class="tab-btn" onclick="switchTab('tab-positions'); loadPositions();">📊 Paper Trades</button>
+        </div>
+    </header>
+
+    <!-- Tab 1: Historical Charts -->
+    <div id="tab-historical" class="tab-panel active">
+        <div class="card">
+            <div class="card-title">
+                <span>Historical SPX Index & Options Skew (Last 500 Days)</span>
+                <button class="btn btn-secondary" onclick="loadHistoryChart()">🔄 Refresh Chart</button>
+            </div>
+            <p style="color: var(--text-muted); margin-bottom: 20px; font-size: 14px;">
+                Options Skew measures the Implied Volatility (IV) difference: <strong>IV(95% Put) - IV(105% Call)</strong>.
+                Observe how Skew typically moves <em>opposite</em> to SPX (fear falls as index rises).
+                Keep an eye out for <strong>divergences</strong> where both SPX and Skew rise together (bearish) or fall together (bullish).
+            </p>
+            <div style="position: relative; height: 500px; width: 100%;">
+                <canvas id="historicalChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Strategy Backtester -->
+    <div id="tab-backtester" class="tab-panel">
+        <div class="grid-2">
+            <!-- Backtester settings -->
+            <div class="card">
+                <div class="card-title">Backtester Settings</div>
+                <form id="backtestForm" onsubmit="runBacktest(event)">
+                    <div class="form-group">
+                        <label for="initialCapital">Initial Capital ($)</label>
+                        <input type="number" id="initialCapital" class="form-control" value="100000" min="1000">
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label for="lookbackDays">Lookback Window (Trading Days)</label>
+                            <input type="number" id="lookbackDays" class="form-control" value="10" min="2" max="30">
+                            <span style="font-size: 11px; color: var(--text-muted);">10 Days = 2 Calendar Weeks</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="holdingPeriod">Holding Period (Trading Days)</label>
+                            <input type="number" id="holdingPeriod" class="form-control" value="10" min="1" max="60">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="skewThreshold">Divergence Skew Threshold (%)</label>
+                        <input type="number" step="0.1" id="skewThreshold" class="form-control" value="0.5">
+                        <span style="font-size: 11px; color: var(--text-muted);">Trigger entry if skew changes by more than this over the 2-week window (0.5% default)</span>
+                    </div>
+                    <button type="submit" class="btn" style="width: 100%; margin-top: 15px;">🚀 Run Historical Backtest</button>
+                </form>
+            </div>
+
+            <!-- Backtester Performance Summary -->
+            <div class="card">
+                <div class="card-title">Backtester Performance</div>
+                <div class="grid-3" style="margin-bottom: 25px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Final Capital</div>
+                        <div id="perfFinalCap" class="stat-val">$100,000</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Strategy Return</div>
+                        <div id="perfReturn" class="stat-val positive">+0.00%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Buy & Hold Return</div>
+                        <div id="perfBenchmark" class="stat-val">+0.00%</div>
+                    </div>
+                </div>
+                <div class="grid-3">
+                    <div class="stat-card">
+                        <div class="stat-label">Win Rate</div>
+                        <div id="perfWinRate" class="stat-val">0.00%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Sharpe Ratio</div>
+                        <div id="perfSharpe" class="stat-val">0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Max Drawdown</div>
+                        <div id="perfDrawdown" class="stat-val" style="color: var(--danger);">0.00%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backtest Equity Curve Chart -->
+        <div class="card">
+            <div class="card-title">Strategy Equity Curve vs. Benchmark</div>
+            <div style="position: relative; height: 350px; width: 100%;">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Backtest Trades Table -->
+        <div class="card">
+            <div class="card-title">Executed Trade Log</div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Entry Date</th>
+                            <th>Exit Date</th>
+                            <th>Strategy Name</th>
+                            <th>Direction</th>
+                            <th>Entry Spot</th>
+                            <th>Exit Spot</th>
+                            <th>Trade Return</th>
+                            <th>Profit/Loss ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLogBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 25px;">
+                                No backtest executed yet. Configure settings and click run!
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Real-time Kafka Feed -->
+    <div id="tab-simulator" class="tab-panel">
+        <div class="grid-2" style="margin-bottom: 25px; grid-template-columns: 1fr 1fr; gap: 25px;">
+            <!-- Schwab API Configuration Card -->
+            <div class="card" style="grid-column: span 2; margin-bottom: 0;">
+                <div class="card-title">🔑 Charles Schwab Developer API Setup</div>
+                <div class="grid-3" style="margin-bottom: 15px;">
+                    <div class="form-group">
+                        <label for="schwabClientId">App Key (Client ID)</label>
+                        <input type="text" id="schwabClientId" class="form-control" placeholder="Enter App Key...">
+                    </div>
+                    <div class="form-group">
+                        <label for="schwabClientSecret">App Secret (Client Secret)</label>
+                        <input type="password" id="schwabClientSecret" class="form-control" placeholder="Enter App Secret...">
+                    </div>
+                    <div class="form-group">
+                        <label for="schwabRedirectUri">Redirect URI</label>
+                        <input type="text" id="schwabRedirectUri" class="form-control" value="https://127.0.0.1">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="schwabRefreshToken">Manual Refresh Token (Optional — paste if you already have a valid token)</label>
+                    <input type="password" id="schwabRefreshToken" class="form-control" placeholder="Paste your existing Schwab Refresh Token here to bypass browser login...">
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <button class="btn btn-secondary" onclick="saveSchwabConfig()">💾 Save Configuration</button>
+                    <a id="schwabAuthLink" href="#" target="_blank" class="btn" style="display: none; background: var(--accent-primary); color: white; text-decoration: none;">🔗 Login & Authorize Schwab</a>
+                </div>
+                <div id="schwabAuthSection" style="margin-top: 15px; display: none; border-top: 1px solid var(--card-border); padding-top: 15px;">
+                    <div class="form-group">
+                        <label for="schwabAuthUrl">Paste Redirected URL (containing code=...) or the Authorization Code Here</label>
+                        <input type="text" id="schwabAuthUrl" class="form-control" placeholder="https://127.0.0.1/?code=...">
+                    </div>
+                    <button class="btn btn-success" onclick="authorizeSchwab()" style="margin-top: 5px;">🔑 Complete Authentication</button>
+                </div>
+                <div id="schwabStatusAlert" style="margin-top: 15px; font-size: 13px; font-weight: 500;"></div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <!-- Simulator Status & Config -->
+            <div class="card">
+                <div class="card-title">
+                    <span>Charles Schwab Kafka Stream Control</span>
+                    <span id="simulatorStatusLight" class="status-light"></span>
+                </div>
+                
+                <!-- Active Feed Selector -->
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="font-weight: 600; margin-bottom: 8px;">Active Market Data Feed</label>
+                    <div style="display: flex; gap: 20px; background: rgba(31, 41, 55, 0.4); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--card-border);">
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main); font-size: 14px;">
+                            <input type="radio" name="feedType" value="SIMULATOR" checked onchange="switchFeed('SIMULATOR')"> 💻 Mock Simulator
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main); font-size: 14px;">
+                            <input type="radio" name="feedType" value="REAL" onchange="switchFeed('REAL')"> 🏦 Real Schwab Dev API
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Seed Real History Section -->
+                <div id="schwabSeedSection" style="display: none; background: rgba(99, 102, 241, 0.08); border: 1px dashed var(--accent-primary); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                    <h5 style="color: var(--text-main); margin-bottom: 4px; font-size: 14px; font-weight: 600;">Wipe Mock Data & Download Schwab History</h5>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Downloads the past 2 years of actual daily SPX closing prices directly from your Schwab Dev API.</p>
+                    <button class="btn btn-secondary" onclick="seedSchwabHistory()" style="font-size: 12px; padding: 6px 14px; border-color: var(--accent-primary); background: transparent;">💾 Seed Real Data</button>
+                    <span id="seedingStatus" style="font-size: 12px; color: var(--warning); margin-left: 10px; font-weight: 500;"></span>
+                </div>
+
+                <div style="display: flex; gap: 15px; margin-bottom: 25px;">
+                    <button class="btn btn-success" onclick="toggleSimulator(true)" style="flex: 1;">▶ Start Stream</button>
+                    <button class="btn btn-danger" onclick="toggleSimulator(false)" style="flex: 1;">⏸ Pause Stream</button>
+                </div>
+
+                <div class="grid-4" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">SPX Spot</div>
+                        <div id="liveSpot" class="stat-val">5000.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">95% Put IV</div>
+                        <div id="livePutIv" class="stat-val">20.00%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">105% Call IV</div>
+                        <div id="liveCallIv" class="stat-val">15.00%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Options Skew</div>
+                        <div id="liveSkew" class="stat-val" style="color: var(--accent-secondary);">5.00%</div>
+                    </div>
+                </div>
+
+                <div id="anomalySection" style="border-top: 1px solid var(--card-border); padding-top: 20px;">
+                    <h4 style="margin-bottom: 15px; font-weight: 600;">Inject Options Skew Anomaly</h4>
+                    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">
+                        Manually trigger a divergence in the Kafka stream to see how the engine processes it, saves it to the database, and alerts in real-time.
+                    </p>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary" onclick="triggerAnomaly('bearish')" style="flex: 1; border-color: var(--danger); color: var(--danger);">🚨 Bearish Divergence</button>
+                        <button class="btn btn-secondary" onclick="triggerAnomaly('bullish')" style="flex: 1; border-color: var(--success); color: var(--success);">📈 Bullish Divergence</button>
+                    </div>
+                    <div id="anomalyStatus" style="font-size: 12px; text-align: center; color: var(--warning); margin-top: 12px;"></div>
+                </div>
+            </div>
+
+            <!-- Kafka Pipeline Terminal Monitor -->
+            <div class="card">
+                <div class="card-title">Kafka Stream Monitor (schwab-option-ticks)</div>
+                <div class="terminal-log" id="kafkaLogs">
+                    <div class="log-entry"><span class="log-time">[SYSTEM]</span> Connecting to local Kafka consumer pipeline...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Commentary + Signal Row -->
+        <div class="card" style="border-color: rgba(99,102,241,0.25);">
+            <div class="card-title">
+                <span>🤖 Gemini AI Market Analyst</span>
+                <div style="display:flex; gap: 10px; align-items: center;">
+                    <span id="alpacaStatusPill" class="pill pill-amber">⏳ Alpaca: checking…</span>
+                    <span id="geminiStatusPill" class="pill pill-amber">⏳ Gemini: checking…</span>
+                    <span id="openPosBadge" class="pill pill-amber">📋 0 Open Positions</span>
+                </div>
+            </div>
+            <div id="signalBanner" style="display:none;"></div>
+            <div class="commentary-box">
+                <div class="commentary-icon">💬</div>
+                <div class="commentary-text" id="aiCommentary">Monitoring live option ticks. Commentary will appear here when a skew divergence signal fires.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 4: Paper Trades (Alpaca Positions) -->
+    <div id="tab-positions" class="tab-panel">
+        <div class="card">
+            <div class="card-title">
+                <span>Alpaca Paper Trading — Open & Closed Positions</span>
+                <button class="btn btn-secondary" onclick="loadPositions()" style="padding: 7px 14px; font-size: 13px;">🔄 Refresh</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+                These are live paper-traded SPY options opened automatically when skew divergence signals fire on the Kafka feed. Each contract covers 100 shares. P&amp;L updates every tick.
+            </p>
+
+            <!-- Summary Stats -->
+            <div class="grid-4" style="margin-bottom: 25px;">
+                <div class="stat-card">
+                    <div class="stat-label">Open Positions</div>
+                    <div id="posOpenCount" class="stat-val">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Closed Positions</div>
+                    <div id="posClosedCount" class="stat-val">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Unrealized P&L</div>
+                    <div id="posUnrealizedPnl" class="stat-val">$0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Realized P&L</div>
+                    <div id="posRealizedPnl" class="stat-val">$0</div>
+                </div>
+            </div>
+
+            <!-- Positions Table -->
+            <div class="table-container">
+                <table id="positionsTable">
+                    <thead>
+                        <tr>
+                            <th>Entry Time</th>
+                            <th>Signal</th>
+                            <th>Option Contract</th>
+                            <th>Type</th>
+                            <th>Qty</th>
+                            <th>Entry Price</th>
+                            <th>Current Price</th>
+                            <th>Unrealized P&L</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsBody">
+                        <tr>
+                            <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                No positions yet. Start the live feed and inject anomalies to trigger paper trades!
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- AI Commentary Archive -->
+        <div class="card">
+            <div class="card-title">Recent Signal Commentary Log</div>
+            <div id="commentaryLog" style="display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto;">
+                <div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px;">No signals fired yet. Commentary will appear here.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Tab switching
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+        document.getElementById(tabId).classList.add('active');
+        event.target.classList.add('active');
+    }
+
+    // Chart instances
+    let historicalChart = null;
+    let equityChart = null;
+    let liveUpdateInterval = null;
+
+    // Load History Charts on Load
+    window.addEventListener('load', () => {
+        loadHistoryChart();
+        checkSchwabStatus();
+    });
+
+    // 1. Fetch history from database and render chart
+    function loadHistoryChart() {
+        fetch('/api/skew-history')
+            .then(res => res.json())
+            .then(data => {
+                if (data.length === 0) {
+                    console.log("No data returned yet.");
+                    return;
+                }
+
+                const labels = data.map(d => d.timestamp.split('T')[0]);
+                const spots = data.map(d => d.spotPrice);
+                const skews = data.map(d => d.skew * 100); // convert to %
+
+                if (historicalChart) {
+                    historicalChart.destroy();
+                }
+
+                const ctx = document.getElementById('historicalChart').getContext('2d');
+                historicalChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'SPX Spot Price',
+                                data: spots,
+                                borderColor: '#06b6d4',
+                                backgroundColor: 'rgba(6, 182, 212, 0.05)',
+                                yAxisID: 'ySpot',
+                                borderWidth: 2.5,
+                                pointRadius: 0,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Options Skew (Put IV - Call IV %)',
+                                data: skews,
+                                borderColor: '#a855f7',
+                                backgroundColor: 'rgba(168, 85, 247, 0.05)',
+                                yAxisID: 'ySkew',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                tension: 0.1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                                ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+                            },
+                            ySpot: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                                ticks: { color: '#06b6d4', font: { family: 'Outfit' } },
+                                title: { display: true, text: 'SPX Index', color: '#06b6d4', font: { family: 'Outfit', size: 13, weight: 'bold' } }
+                            },
+                            ySkew: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                grid: { drawOnChartArea: false },
+                                ticks: { color: '#a855f7', font: { family: 'Outfit' } },
+                                title: { display: true, text: 'Volatility Skew (%)', color: '#a855f7', font: { family: 'Outfit', size: 13, weight: 'bold' } }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: { color: '#f3f4f6', font: { family: 'Outfit', size: 13 } }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(err => console.error("Error loading historical chart:", err));
+    }
+
+    // 2. Trigger backtest and display results
+    function runBacktest(event) {
+        event.preventDefault();
+
+        const initialCapital = document.getElementById('initialCapital').value;
+        const lookbackDays = document.getElementById('lookbackDays').value;
+        const holdingPeriod = document.getElementById('holdingPeriod').value;
+        // Skew threshold from % to decimal (e.g. 0.5% => 0.005)
+        const skewThreshold = parseFloat(document.getElementById('skewThreshold').value) / 100.0;
+
+        const url = `/api/backtest?initialCapital=${initialCapital}&lookbackDays=${lookbackDays}&holdingPeriod=${holdingPeriod}&skewThreshold=${skewThreshold}`;
+
+        fetch(url, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                // Populate metrics
+                document.getElementById('perfFinalCap').innerText = `$${Math.round(data.finalCapital).toLocaleString()}`;
+                
+                const stratRet = data.totalReturn * 100;
+                const benchRet = data.buyAndHoldReturn * 100;
+                
+                const retEl = document.getElementById('perfReturn');
+                retEl.innerText = `${stratRet >= 0 ? '+' : ''}${stratRet.toFixed(2)}%`;
+                retEl.className = `stat-val ${stratRet >= 0 ? 'positive' : 'negative'}`;
+
+                const benchEl = document.getElementById('perfBenchmark');
+                benchEl.innerText = `${benchRet >= 0 ? '+' : ''}${benchRet.toFixed(2)}%`;
+                benchEl.className = `stat-val ${benchRet >= 0 ? 'positive' : 'negative'}`;
+
+                document.getElementById('perfWinRate').innerText = `${(data.winRate * 100).toFixed(1)}%`;
+                document.getElementById('perfSharpe').innerText = data.sharpeRatio.toFixed(2);
+                document.getElementById('perfDrawdown').innerText = `${(data.maxDrawdown * 100).toFixed(1)}%`;
+
+                // Render Equity Curve Chart
+                renderEquityChart(data.dates, data.equityCurve, data.spotCurve);
+
+                // Populate Trade log table
+                const logBody = document.getElementById('tradeLogBody');
+                logBody.innerHTML = '';
+                
+                if (data.trades.length === 0) {
+                    logBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 25px;">No trades executed under these parameters.</td></tr>`;
+                    return;
+                }
+
+                data.trades.forEach(t => {
+                    const row = document.createElement('tr');
+                    
+                    const entryDate = t.entryTime.split('T')[0];
+                    const exitDate = t.exitTime ? t.exitTime.split('T')[0] : 'Open';
+                    const sign = t.profitLoss >= 0 ? '+' : '';
+                    const returnPct = t.tradeReturn * 100;
+                    
+                    row.innerHTML = `
+                        <td>${entryDate}</td>
+                        <td>${exitDate}</td>
+                        <td>${t.strategyName}</td>
+                        <td><span class="badge badge-${t.positionType.toLowerCase()}">${t.positionType}</span></td>
+                        <td>$${t.entrySpot.toFixed(2)}</td>
+                        <td>${t.exitSpot ? '$' + t.exitSpot.toFixed(2) : '-'}</td>
+                        <td style="color: ${returnPct >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+                            ${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%
+                        </td>
+                        <td style="color: ${t.profitLoss >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight: 600;">
+                            ${sign}$${Math.round(t.profitLoss).toLocaleString()}
+                        </td>
+                    `;
+                    logBody.appendChild(row);
+                });
+            })
+            .catch(err => console.error("Error running backtest:", err));
+    }
+
+    function renderEquityChart(dates, equity, spot) {
+        if (equityChart) {
+            equityChart.destroy();
+        }
+
+        const ctx = document.getElementById('equityChart').getContext('2d');
+        equityChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [
+                    {
+                        label: 'Options Skew Strategy (Compounded)',
+                        data: equity,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                        borderWidth: 2.5,
+                        pointRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'S&P 500 Buy & Hold Benchmark',
+                        data: spot,
+                        borderColor: '#9ca3af',
+                        borderDash: [5, 5],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: { color: '#f3f4f6', font: { family: 'Outfit' } },
+                        title: { display: true, text: 'Portfolio Value ($)', color: '#f3f4f6', font: { family: 'Outfit', size: 12 } }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#f3f4f6', font: { family: 'Outfit' } }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Real-time Kafka Feed Controls & Status Polling
+    function toggleSimulator(enabled) {
+        fetch(`/api/simulator/toggle?enabled=${enabled}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                const logs = document.getElementById('kafkaLogs');
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `<span class="log-time">[${new Date().toLocaleTimeString()}]</span> <span class="log-info">[FEED]</span> Stream status updated: ${data.message}`;
+                logs.appendChild(entry);
+                logs.scrollTop = logs.scrollHeight;
+                updateSimulatorUI(data.streamingEnabled);
+            });
+    }
+
+    function triggerAnomaly(mode) {
+        fetch(`/api/simulator/anomaly?mode=${mode}&durationTicks=15`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                const statusDiv = document.getElementById('anomalyStatus');
+                statusDiv.innerText = `Injected ${mode.toUpperCase()} anomaly! Stream will drift for 15 ticks.`;
+                setTimeout(() => statusDiv.innerText = '', 5000);
+
+                const logs = document.getElementById('kafkaLogs');
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `<span class="log-time">[${new Date().toLocaleTimeString()}]</span> <span class="log-warn">[ANOMALY]</span> Injected ${mode.toUpperCase()} divergence into option volatility streams.`;
+                logs.appendChild(entry);
+                logs.scrollTop = logs.scrollHeight;
+            });
+    }
+
+    function updateSimulatorUI(streaming) {
+        const light = document.getElementById('simulatorStatusLight');
+        if (streaming) {
+            light.classList.add('active');
+        } else {
+            light.classList.remove('active');
+        }
+    }
+
+    function startLiveUpdate() {
+        if (liveUpdateInterval) {
+            clearInterval(liveUpdateInterval);
+        }
+
+        // Poll simulator status and latest records every 1.5 seconds
+        liveUpdateInterval = setInterval(() => {
+            fetch('/api/simulator/status')
+                .then(res => res.json())
+                .then(data => {
+                    updateSimulatorUI(data.streamingEnabled);
+                    document.getElementById('liveSpot').innerText = data.spotPrice.toFixed(2);
+                    document.getElementById('livePutIv').innerText = `${(data.putIv * 100).toFixed(2)}%`;
+                    document.getElementById('liveCallIv').innerText = `${(data.callIv * 100).toFixed(2)}%`;
+                    document.getElementById('liveSkew').innerText = `${(data.skew * 100).toFixed(2)}%`;
+
+                    // Update anomaly section visibility
+                    const anomalySec = document.getElementById('anomalySection');
+                    anomalySec.style.display = data.activeFeed === 'REAL' ? 'none' : 'block';
+
+                    // Update API status pills
+                    const alpacaPill = document.getElementById('alpacaStatusPill');
+                    alpacaPill.textContent = data.alpacaConfigured ? '✅ Alpaca: Connected' : '❌ Alpaca: Unconfigured';
+                    alpacaPill.className = 'pill ' + (data.alpacaConfigured ? 'pill-green' : 'pill-red');
+
+                    const geminiPill = document.getElementById('geminiStatusPill');
+                    geminiPill.textContent = data.geminiConfigured ? '✅ Gemini: Ready' : '❌ Gemini: Unconfigured';
+                    geminiPill.className = 'pill ' + (data.geminiConfigured ? 'pill-green' : 'pill-red');
+
+                    // Open positions badge
+                    const posBadge = document.getElementById('openPosBadge');
+                    if (posBadge) {
+                        const cnt = data.openPositions || 0;
+                        posBadge.textContent = `📋 ${cnt} Open Position${cnt !== 1 ? 's' : ''}`;
+                        posBadge.className = 'pill ' + (cnt > 0 ? 'pill-green' : 'pill-amber');
+                    }
+
+                    // AI Commentary + Signal Banner
+                    if (data.latestCommentary) {
+                        document.getElementById('aiCommentary').textContent = data.latestCommentary;
+                    }
+
+                    const banner = document.getElementById('signalBanner');
+                    if (data.latestSignal && data.latestSignal !== 'NONE') {
+                        const isBearish = data.latestSignal === 'BEARISH_DIVERGENCE';
+                        banner.style.display = 'flex';
+                        banner.className = 'signal-banner ' + (isBearish ? 'bearish' : 'bullish');
+                        banner.innerHTML = `${isBearish ? '🚨' : '📈'} SIGNAL: ${data.latestSignal.replace('_', ' ')} — SPY paper option trade triggered!`;
+                    } else {
+                        banner.style.display = 'none';
+                    }
+
+                    const logs = document.getElementById('kafkaLogs');
+                    
+                    if (data.streamingEnabled) {
+                        const entry = document.createElement('div');
+                        entry.className = 'log-entry';
+                        
+                        let signalTag = '';
+                        if (data.anomalyMode && data.anomalyMode !== 'NONE') {
+                            signalTag = ` <span class="log-warn">[DIVERGENCE: ${data.anomalyMode}]</span>`;
+                        }
+                        if (data.latestSignal && data.latestSignal !== 'NONE') {
+                            signalTag += ` <span class="log-signal">[TRADE FIRED: ${data.latestSignal}]</span>`;
+                        }
+
+                        entry.innerHTML = `
+                            <span class="log-time">[${new Date().toLocaleTimeString()}]</span> 
+                            <span>KAFKA_MSG (${data.activeFeed}): SPX=$${data.spotPrice.toFixed(2)} PutIV=${(data.putIv*100).toFixed(2)}% CallIV=${(data.callIv*100).toFixed(2)}% Skew=${(data.skew*100).toFixed(2)}%</span>${signalTag}
+                        `;
+                        
+                        if (logs.children.length > 50) {
+                            logs.removeChild(logs.firstChild);
+                        }
+                        
+                        logs.appendChild(entry);
+                        logs.scrollTop = logs.scrollHeight;
+                    }
+                })
+                .catch(err => console.error("Error polling simulator status:", err));
+        }, 1500);
+    }
+
+    // 4. Schwab API Configuration and Seeding JS Methods
+    function checkSchwabStatus() {
+        fetch('/api/schwab/status')
+            .then(res => res.json())
+            .then(data => {
+                const statusAlert = document.getElementById('schwabStatusAlert');
+                const authLink = document.getElementById('schwabAuthLink');
+                const authSection = document.getElementById('schwabAuthSection');
+                
+                // Populate inputs if configured
+                if (data.clientId) {
+                    document.getElementById('schwabClientId').value = data.clientId;
+                }
+                if (data.redirectUri) {
+                    document.getElementById('schwabRedirectUri').value = data.redirectUri;
+                }
+
+                if (data.authorized) {
+                    statusAlert.innerText = `✅ Authenticated. Access Token expires in ${Math.round(data.expiresInSeconds / 60)} minutes.`;
+                    statusAlert.style.color = 'var(--success)';
+                    authLink.style.display = 'none';
+                    authSection.style.display = 'none';
+                } else if (data.configured) {
+                    statusAlert.innerText = '⚠️ Configured but Not Authorized. Click the button below to authorize with your retail account.';
+                    statusAlert.style.color = 'var(--warning)';
+                    
+                    // Load and show Schwab Auth link
+                    fetch('/api/schwab/auth-url')
+                        .then(res => res.json())
+                        .then(urlData => {
+                            authLink.href = urlData.url;
+                            authLink.style.display = 'inline-block';
+                            authSection.style.display = 'block';
+                        });
+                } else {
+                    statusAlert.innerText = '❌ Unconfigured. Please enter your App Key and Secret to configure.';
+                    statusAlert.style.color = 'var(--danger)';
+                    authLink.style.display = 'none';
+                    authSection.style.display = 'none';
+                }
+            })
+            .catch(err => console.error("Error checking Schwab status:", err));
+    }
+
+    function saveSchwabConfig() {
+        const clientId = document.getElementById('schwabClientId').value;
+        const clientSecret = document.getElementById('schwabClientSecret').value;
+        const redirectUri = document.getElementById('schwabRedirectUri').value;
+        const refreshToken = document.getElementById('schwabRefreshToken').value.trim();
+
+        if (!clientId || !clientSecret || !redirectUri) {
+            alert("All configuration fields are required.");
+            return;
+        }
+
+        let url;
+        if (refreshToken) {
+            url = `/api/schwab/import-token?clientId=${encodeURIComponent(clientId)}&clientSecret=${encodeURIComponent(clientSecret)}&redirectUri=${encodeURIComponent(redirectUri)}&refreshToken=${encodeURIComponent(refreshToken)}`;
+        } else {
+            url = `/api/schwab/config?clientId=${encodeURIComponent(clientId)}&clientSecret=${encodeURIComponent(clientSecret)}&redirectUri=${encodeURIComponent(redirectUri)}`;
+        }
+        
+        fetch(url, { method: 'POST' })
+            .then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => { throw new Error(err.error || "Request failed") });
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (refreshToken) {
+                    alert("Schwab Refresh Token imported and verified successfully!");
+                    document.getElementById('schwabRefreshToken').value = '';
+                } else {
+                    alert("Schwab credentials saved in-memory and persisted!");
+                }
+                checkSchwabStatus();
+            })
+            .catch(err => alert("Failed to configure Schwab API: " + err.message));
+    }
+
+    function authorizeSchwab() {
+        const authUrlPasted = document.getElementById('schwabAuthUrl').value;
+        if (!authUrlPasted) {
+            alert("Please paste the redirected URL or authorization code.");
+            return;
+        }
+
+        const url = `/api/schwab/authorize?code=${encodeURIComponent(authUrlPasted)}`;
+        
+        fetch(url, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert("Schwab API authorization successful!");
+                    document.getElementById('schwabAuthUrl').value = '';
+                    checkSchwabStatus();
+                }
+            })
+            .catch(err => alert("Authorization failed: " + err));
+    }
+
+    function switchFeed(feedType) {
+        fetch(`/api/simulator/feed?feedType=${feedType}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                const logs = document.getElementById('kafkaLogs');
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `<span class="log-time">[${new Date().toLocaleTimeString()}]</span> <span class="log-info">[FEED]</span> Switched active feed to: ${feedType}`;
+                logs.appendChild(entry);
+                logs.scrollTop = logs.scrollHeight;
+                
+                // Show/hide Schwab database seeding section
+                const seedSec = document.getElementById('schwabSeedSection');
+                if (feedType === 'REAL') {
+                    seedSec.style.display = 'block';
+                } else {
+                    seedSec.style.display = 'none';
+                }
+
+                updateSimulatorUI(false); // reset light on switch
+            });
+    }
+
+    function seedSchwabHistory() {
+        const statusSpan = document.getElementById('seedingStatus');
+        statusSpan.innerText = "⏳ Seeding from Schwab Price History API... Please wait.";
+
+        fetch('/api/schwab/seed', { method: 'POST' })
+            .then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => { throw new Error(err.error || "Seeding failed") });
+                }
+                return res.json();
+            })
+            .then(data => {
+                statusSpan.innerText = "✅ Database seeded successfully!";
+                alert(data.message);
+                loadHistoryChart(); // Refresh historical chart with real data
+                setTimeout(() => statusSpan.innerText = '', 5000);
+            })
+            .catch(err => {
+                statusSpan.innerText = "❌ Seeding failed.";
+                alert("Seeding failed: " + err.message);
+                setTimeout(() => statusSpan.innerText = '', 5000);
+            });
+    }
+
+    // 5. Paper Trades: Load positions from /api/positions
+    let commentaryLogEntries = [];
+
+    function loadPositions() {
+        fetch('/api/positions')
+            .then(res => res.json())
+            .then(positions => {
+                const body = document.getElementById('positionsBody');
+                body.innerHTML = '';
+
+                if (!positions || positions.length === 0) {
+                    body.innerHTML = `<tr><td colspan="10" style="text-align:center; color:var(--text-muted); padding:30px;">No positions yet. Start the live feed and inject anomalies to trigger paper trades!</td></tr>`;
+                    updatePositionStats([], []);
+                    return;
+                }
+
+                const open   = positions.filter(p => p.status === 'OPEN');
+                const closed = positions.filter(p => p.status === 'CLOSED');
+                updatePositionStats(open, closed);
+
+                // Update commentary log from positions that have commentary
+                const withComm = positions.filter(p => p.commentary);
+                if (withComm.length > commentaryLogEntries.length) {
+                    const logDiv = document.getElementById('commentaryLog');
+                    logDiv.innerHTML = '';
+                    withComm.slice().reverse().forEach(p => {
+                        const card = document.createElement('div');
+                        card.style.cssText = 'background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.2); border-radius:10px; padding:14px 18px;';
+                        const isBearish = p.signalType === 'BEARISH_DIVERGENCE';
+                        card.innerHTML = `
+                            <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">
+                                ${isBearish ? '🚨' : '📈'} <strong style="color:${isBearish ? 'var(--danger)' : 'var(--success)'}">${(p.signalType || '').replace('_', ' ')}</strong>
+                                &nbsp;·&nbsp; ${p.entryTime ? p.entryTime.replace('T', ' ').split('.')[0] : ''}
+                                &nbsp;·&nbsp; SPX ≈ $${(p.entrySpotPrice || 0).toFixed(0)}
+                            </div>
+                            <div style="font-style:italic; color:#c7d2fe; line-height:1.6;">${p.commentary}</div>
+                        `;
+                        logDiv.appendChild(card);
+                    });
+                    commentaryLogEntries = withComm;
+                }
+
+                // Render table rows
+                positions.forEach(p => {
+                    const isOpen = p.status === 'OPEN';
+                    const pnl = p.profitLoss || 0;
+                    const pnlSign = pnl >= 0 ? '+' : '';
+                    const pnlColor = pnl >= 0 ? 'var(--success)' : 'var(--danger)';
+                    const isBearish = p.signalType === 'BEARISH_DIVERGENCE';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="font-family:'JetBrains Mono',monospace; font-size:12px;">${(p.entryTime || '').replace('T',' ').split('.')[0]}</td>
+                        <td><span class="badge ${isBearish ? 'badge-short' : 'badge-long'}">${(p.signalType || 'N/A').replace('_DIVERGENCE','')}</span></td>
+                        <td style="font-family:'JetBrains Mono',monospace; font-size:12px;">${p.optionSymbol || '-'}</td>
+                        <td><span class="badge ${p.optionType === 'PUT' ? 'badge-short' : 'badge-long'}">${p.optionType || '-'}</span></td>
+                        <td>${p.quantity || 1}</td>
+                        <td>$${(p.entryOptionPrice || 0).toFixed(2)}</td>
+                        <td>$${(p.currentOptionPrice || 0).toFixed(2)}</td>
+                        <td style="color:${pnlColor}; font-weight:700;">${pnlSign}$${Math.abs(pnl).toFixed(2)}</td>
+                        <td><span class="badge ${isOpen ? 'badge-long' : 'badge-short'}">${p.status}</span></td>
+                        <td>
+                            ${isOpen ? `<button class="btn-close-pos" onclick="closePosition(${p.id})">✕ Close</button>` : '-'}
+                        </td>
+                    `;
+                    body.appendChild(row);
+                });
+            })
+            .catch(err => console.error('Error loading positions:', err));
+    }
+
+    function updatePositionStats(open, closed) {
+        document.getElementById('posOpenCount').textContent = open.length;
+        document.getElementById('posClosedCount').textContent = closed.length;
+
+        const unrealized = open.reduce((sum, p) => sum + (p.profitLoss || 0), 0);
+        const realized   = closed.reduce((sum, p) => sum + (p.profitLoss || 0), 0);
+
+        const uEl = document.getElementById('posUnrealizedPnl');
+        uEl.textContent = `${unrealized >= 0 ? '+' : ''}$${Math.abs(unrealized).toFixed(2)}`;
+        uEl.className = 'stat-val ' + (unrealized >= 0 ? 'positive' : 'negative');
+
+        const rEl = document.getElementById('posRealizedPnl');
+        rEl.textContent = `${realized >= 0 ? '+' : ''}$${Math.abs(realized).toFixed(2)}`;
+        rEl.className = 'stat-val ' + (realized >= 0 ? 'positive' : 'negative');
+    }
+
+    function closePosition(id) {
+        if (!confirm(`Close position #${id}? This will submit a SELL order on Alpaca.`)) return;
+
+        fetch(`/api/positions/close/${id}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message + (data.profitLoss != null ? ` P&L: $${data.profitLoss.toFixed(2)}` : ''));
+                loadPositions();
+            })
+            .catch(err => alert('Error closing position: ' + err));
+    }
+</script>
+
+</body>
+</html>
