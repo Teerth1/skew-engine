@@ -54,6 +54,13 @@ public class NewsArticle {
     @Column(length = 50)
     private String rawSentiment;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "data_category", length = 50)
+    private DataCategory dataCategory = DataCategory.NARRATIVE_EVENT;
+
+    @Column(name = "is_deterministic", nullable = false)
+    private boolean isDeterministic = false;
+
     // -------------------------------------------------------------------------
     // Constructors
     // -------------------------------------------------------------------------
@@ -72,6 +79,24 @@ public class NewsArticle {
         this.summary      = summary;
         this.provider     = provider;
         this.rawSentiment = rawSentiment;
+        this.dataCategory = DataCategory.NARRATIVE_EVENT;
+        this.isDeterministic = false;
+    }
+
+    public NewsArticle(String symbol, String title, String source, String url,
+                       LocalDateTime publishedAt, String summary,
+                       String provider, String rawSentiment,
+                       DataCategory dataCategory, boolean isDeterministic) {
+        this.symbol          = symbol;
+        this.title           = title;
+        this.source          = source;
+        this.url             = url;
+        this.publishedAt     = publishedAt;
+        this.summary         = summary;
+        this.provider        = provider;
+        this.rawSentiment    = rawSentiment;
+        this.dataCategory    = dataCategory;
+        this.isDeterministic = isDeterministic;
     }
 
     // -------------------------------------------------------------------------
@@ -80,6 +105,7 @@ public class NewsArticle {
 
     public Long getId()                         { return id; }
     public void setId(Long id)                  { this.id = id; }
+
 
     public String getSymbol()                   { return symbol; }
     public void setSymbol(String symbol)        { this.symbol = symbol; }
@@ -104,4 +130,10 @@ public class NewsArticle {
 
     public String getRawSentiment()                     { return rawSentiment; }
     public void setRawSentiment(String rawSentiment)    { this.rawSentiment = rawSentiment; }
+
+    public DataCategory getDataCategory()               { return dataCategory; }
+    public void setDataCategory(DataCategory dataCategory) { this.dataCategory = dataCategory; }
+
+    public boolean isDeterministic()                    { return isDeterministic; }
+    public void setDeterministic(boolean deterministic) { isDeterministic = deterministic; }
 }
