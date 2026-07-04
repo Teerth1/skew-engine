@@ -94,6 +94,18 @@ public class NewsService {
         return refreshCache(symbol);
     }
 
+    /**
+     * Returns recent news articles for a ticker symbol as of a specific point-in-time.
+     * Enforces strict point-in-time constraints to avoid look-ahead bias.
+     */
+    public List<NewsArticle> getRecentNewsAsOf(String symbol, LocalDateTime asOf) {
+        if (asOf == null) {
+            return getRecentNews(symbol);
+        }
+        return repository.findBySymbolAndPublishedAtLessThanEqualOrderByPublishedAtDesc(
+                symbol, asOf, PageRequest.of(0, MAX_ARTICLES));
+    }
+
     public List<NewsArticle> getRecentNewsFallback(String symbol, Throwable t) {
         logger.warn("Circuit breaker or retry exhausted for NewsService ({}). Reason: {}", symbol, t.getMessage());
         CachedNews cached = cache.get(symbol);

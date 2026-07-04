@@ -20,4 +20,8 @@ public interface NewsArticleRepository extends JpaRepository<NewsArticle, Long> 
     /** Articles newer than a given timestamp for freshness checks. */
     List<NewsArticle> findBySymbolAndPublishedAtAfterOrderByPublishedAtDesc(
             String symbol, LocalDateTime after);
+
+    /** PIT (Point-In-Time) query to retrieve articles strictly before or at asOf. */
+    List<NewsArticle> findBySymbolAndPublishedAtLessThanEqualOrderByPublishedAtDesc(
+            String symbol, LocalDateTime asOf, Pageable pageable);
 }
