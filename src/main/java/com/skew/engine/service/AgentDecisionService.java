@@ -61,7 +61,7 @@ public class AgentDecisionService {
             if (tradingAgentsClientService.isEnabled()) {
                 String ticker = intent.optionSymbol() != null && intent.optionSymbol().length() >= 3 
                         ? intent.optionSymbol().substring(0, 3) : "SPY";
-                List<NewsArticle> recentNews = newsService.getRecentNews(ticker);
+                List<NewsArticle> recentNews = newsService.getRecentNewsAsOf(ticker, intent.createdAt());
                 int openPositions = livePositionRepository.findByStatusOrderByEntryTimeDesc("OPEN").size();
                 Optional<AgentDecision> externalDecision = tradingAgentsClientService.requestAnalysis(intent, recentNews, openPositions);
                 if (externalDecision.isPresent()) {

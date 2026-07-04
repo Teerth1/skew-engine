@@ -1,6 +1,7 @@
 package com.skew.engine.service;
 
 import com.skew.engine.domain.NewsArticle;
+import com.skew.engine.domain.DataCategory;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,6 +9,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -25,6 +27,11 @@ import java.util.stream.Collectors;
 public class NewsSentimentService {
 
     private static final Logger logger = LoggerFactory.getLogger(NewsSentimentService.class);
+
+    private static final Set<DataCategory> ALLOWED_CATEGORIES = Set.of(
+            DataCategory.NARRATIVE_EVENT,
+            DataCategory.NARRATIVE_SENTIMENT
+    );
 
     private final ChatClient chatClient;
 
@@ -48,11 +55,21 @@ public class NewsSentimentService {
             return SentimentBand.NEUTRAL;
         }
 
+        // Provenance Gate: Filter out articles that do not belong to permitted categories
+        List<NewsArticle> permittedArticles = articles.stream()
+                .filter(a -> ALLOWED_CATEGORIES.contains(a.getDataCategory()))
+                .toList();
+
+        if (permittedArticles.isEmpty()) {
+            logger.warn("NewsSentimentService: all articles for {} were rejected by the provenance gate — returning NEUTRAL", ticker);
+            return SentimentBand.NEUTRAL;
+        }
+
         try {
-            return callGemini(articles, ticker);
+            return callGemini(permittedArticles, ticker);
         } catch (Exception e) {
             logger.warn("NewsSentimentService: Gemini call failed for {} — {}", ticker, e.getMessage());
-            return doRuleBasedFallback(articles);
+            return doRuleBasedFallback(permittedArticles);
         }
     }
 
