@@ -44,6 +44,7 @@ import com.skew.engine.service.SchwabApiService;
 import com.skew.engine.service.MarketCalendarService;
 import com.skew.engine.service.GexService;
 import com.skew.engine.service.GexChartGenerator;
+import com.skew.engine.service.OrderManagerService;
 
 /**
  * Service class for Discord bot integration.
@@ -52,14 +53,15 @@ import com.skew.engine.service.GexChartGenerator;
 public class DiscordBotService extends ListenerAdapter {
     private static final Logger logger = LoggerFactory.getLogger(DiscordBotService.class);
     
-    @Value("${discord.bot.token}")
+    @Value("${discord.bot.token:}")
     private String botToken;
 
-    @Value("${discord.bot.channel}")
+    @Value("${discord.bot.channel:}")
     private String channelId;
 
-    @Value("${discord.bot.guild}")
+    @Value("${discord.bot.guild:}")
     private String guildId;
+
 
     private final BlackScholesService bsService;
     private final CommandParserService parserService;
@@ -77,6 +79,7 @@ public class DiscordBotService extends ListenerAdapter {
     private final GexChartGenerator gexChartGenerator;
     private final GexSnapshotRepository gexSnapshotRepository;
     private final ObjectMapper objectMapper;
+    private final OrderManagerService orderManagerService;
 
     public DiscordBotService(BlackScholesService bsService, CommandParserService parserService,
             MarketDataService marketDataService, MassiveDataService massiveService,
@@ -84,7 +87,7 @@ public class DiscordBotService extends ListenerAdapter {
             IndicatorService indicatorService, SchwabApiService schwabService,
             MarketCalendarService marketCalendarService, GexService gexService,
             GexChartGenerator gexChartGenerator, GexSnapshotRepository gexSnapshotRepository,
-            ObjectMapper objectMapper) { 
+            ObjectMapper objectMapper, OrderManagerService orderManagerService) { 
         this.bsService = bsService;
         this.parserService = parserService;
         this.marketService = marketDataService;
@@ -98,6 +101,7 @@ public class DiscordBotService extends ListenerAdapter {
         this.gexChartGenerator = gexChartGenerator;
         this.gexSnapshotRepository = gexSnapshotRepository;
         this.objectMapper = objectMapper;
+        this.orderManagerService = orderManagerService;
     }
 
     @PostConstruct
@@ -608,7 +612,8 @@ public class DiscordBotService extends ListenerAdapter {
 
             if (target != null) {
                 strategyService.closeStrategy(id);
-                event.getHook().sendMessage("✅ **Closed Strategy #" + id + ":** " + target.getTicker() + " (" + target.getStrategy() + ") - " + target.getLegs().size() + " leg(s)").queue();
+                double pnl = orderManagerService.closeSpreadStrategy(target);
+                event.getHook().sendMessage("✅ **Closed Strategy #" + id + ":** " + target.getTicker() + " (" + target.getStrategy() + ") - " + target.getLegs().size() + " leg(s)\n💰 Paper Realized P&L: $" + String.format("%.2f", pnl)).queue();
             } else {
                 event.getHook().sendMessage("❌ Strategy #" + id + " not found or doesn't belong to you.").queue();
             }
@@ -629,6 +634,7 @@ public class DiscordBotService extends ListenerAdapter {
 
             Leg leg = new Leg(opt.type, opt.strike, expiration, price, 1);
             Strategy strategy = strategyService.openStrategy(userId, "SINGLE", opt.ticker, List.of(leg));
+            orderManagerService.executeSpreadStrategy(strategy);
 
             event.getHook().sendMessage("✅ **Position Opened:** " + opt.ticker + " $" + opt.strike + " " + opt.type.toUpperCase() + " (Exp: " + expiration + ") @ $" + price + "\n📋 Strategy ID: " + strategy.getId()).queue();
         } catch (Exception e) {
@@ -651,7 +657,17 @@ public class DiscordBotService extends ListenerAdapter {
 
         try {
             if (action.equals("CLOSE")) {
-                event.getHook().sendMessage("❌ CLOSE not implemented yet. Use /sell <id>").queue();
+                List<Strategy> open = strategyService.getOpenStrategies(userId).stream()
+                        .filter(s -> ticker.equalsIgnoreCase(s.getTicker()) && typeInput.equalsIgnoreCase(s.getStrategy()))
+                        .toList();
+                if (open.isEmpty()) {
+                    event.getHook().sendMessage("❌ No open " + typeInput + " spread found for " + ticker + ".").queue();
+                    return;
+                }
+                Strategy target = open.get(0);
+                strategyService.closeStrategy(target.getId());
+                double pnl = orderManagerService.closeSpreadStrategy(target);
+                event.getHook().sendMessage("✅ **Closed " + typeInput + " Spread #" + target.getId() + ":** " + ticker + "\n💰 Paper Realized P&L: $" + String.format("%.2f", pnl)).queue();
                 return;
             }
 
@@ -672,6 +688,7 @@ public class DiscordBotService extends ListenerAdapter {
 
             ArrayList<Leg> legs = generateLegs(strategyType, strikes, expiration);
             Strategy strategy = strategyService.openStrategy(userId, strategyType.name(), ticker, legs, netCost);
+            orderManagerService.executeSpreadStrategy(strategy);
 
             String response = buildSpreadResponse(strategyType, ticker, legs, netCost != null ? netCost : 0.0, expiration, strategy.getId());
             event.getHook().sendMessage(response).queue();
@@ -696,7 +713,17 @@ public class DiscordBotService extends ListenerAdapter {
 
         try {
             if (action.equals("CLOSE")) {
-                event.getHook().sendMessage("❌ CLOSE not implemented yet. Use /sell <id>").queue();
+                List<Strategy> open = strategyService.getOpenStrategies(userId).stream()
+                        .filter(s -> ticker.equalsIgnoreCase(s.getTicker()) && "IRON_CONDOR".equalsIgnoreCase(s.getStrategy()))
+                        .toList();
+                if (open.isEmpty()) {
+                    event.getHook().sendMessage("❌ No open IRON_CONDOR spread found for " + ticker + ".").queue();
+                    return;
+                }
+                Strategy target = open.get(0);
+                strategyService.closeStrategy(target.getId());
+                double pnl = orderManagerService.closeSpreadStrategy(target);
+                event.getHook().sendMessage("✅ **Closed IRON_CONDOR Spread #" + target.getId() + ":** " + ticker + "\n💰 Paper Realized P&L: $" + String.format("%.2f", pnl)).queue();
                 return;
             }
 
@@ -709,6 +736,7 @@ public class DiscordBotService extends ListenerAdapter {
             legs.add(new Leg("call", (double) callBuy, expiration, 0.0, 1));
 
             Strategy strategy = strategyService.openStrategy(userId, "IRON_CONDOR", ticker, legs, netCost);
+            orderManagerService.executeSpreadStrategy(strategy);
 
             String response = buildSpreadResponse(StrategyType.IRON_CONDOR, ticker, legs, netCost != null ? netCost : 0.0, expiration, strategy.getId());
             event.getHook().sendMessage(response).queue();

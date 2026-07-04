@@ -2,6 +2,7 @@ package com.skew.engine.service;
 
 import com.skew.engine.agent.TradingAgentTools;
 import com.skew.engine.domain.LivePosition;
+import com.skew.engine.domain.NewsArticle;
 import com.skew.engine.domain.StrategyDecisionLog;
 import com.skew.engine.repository.LivePositionRepository;
 import org.slf4j.Logger;
@@ -10,10 +11,11 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Produces an advisory {@link AgentDecision} by combining market data and 
- * tool invocations via Spring AI ChatClient.
+ * tool invocations via Spring AI ChatClient or external TradingAgents service.
  *
  * <p><strong>AGENTS.md constraint:</strong> The LLM output may advise, explain, or score
  * a trade, but must NOT directly place orders. The returned {@link AgentDecision} is
@@ -27,32 +29,48 @@ public class AgentDecisionService {
     private final ChatClient chatClient;
     private final LivePositionRepository livePositionRepository;
     private final TradeMemoryService tradeMemoryService;
+    private final TradingAgentsClientService tradingAgentsClientService;
+    private final NewsService newsService;
 
     public AgentDecisionService(ChatClient.Builder chatClientBuilder, 
                                 TradingAgentTools tradingAgentTools,
                                 LivePositionRepository livePositionRepository,
-                                TradeMemoryService tradeMemoryService) {
+                                TradeMemoryService tradeMemoryService,
+                                TradingAgentsClientService tradingAgentsClientService,
+                                NewsService newsService) {
         this.chatClient = chatClientBuilder
                 .defaultTools(tradingAgentTools)
                 .build();
         this.livePositionRepository = livePositionRepository;
         this.tradeMemoryService = tradeMemoryService;
+        this.tradingAgentsClientService = tradingAgentsClientService;
+        this.newsService = newsService;
     }
 
     record AgentDecisionResponse(String rating, double confidence, String rationale, String riskNotes) {}
 
     /**
      * Produces an advisory {@link AgentDecision} for a given trade intent.
-     * The agent can fetch news and check open positions dynamically.
+     * The agent queries external TradingAgents first if enabled, or falls back to Gemini / heuristics.
      *
      * @param intent The trade being evaluated
      * @return advisory decision — never throws; falls back to HOLD on error
      */
     public AgentDecision decide(TradeIntent intent) {
         try {
+            if (tradingAgentsClientService.isEnabled()) {
+                String ticker = intent.optionSymbol() != null && intent.optionSymbol().length() >= 3 
+                        ? intent.optionSymbol().substring(0, 3) : "SPY";
+                List<NewsArticle> recentNews = newsService.getRecentNews(ticker);
+                int openPositions = livePositionRepository.findByStatusOrderByEntryTimeDesc("OPEN").size();
+                Optional<AgentDecision> externalDecision = tradingAgentsClientService.requestAnalysis(intent, recentNews, openPositions);
+                if (externalDecision.isPresent()) {
+                    return externalDecision.get();
+                }
+            }
             return callGemini(intent);
         } catch (Exception e) {
-            logger.warn("AgentDecisionService: Gemini call failed — {}", e.getMessage());
+            logger.warn("AgentDecisionService: Agent/Gemini call failed — {}", e.getMessage());
             return ruleBasedDecision(intent);
         }
     }

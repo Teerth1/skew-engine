@@ -11,6 +11,7 @@ import com.skew.engine.service.AlpacaService;
 import com.skew.engine.service.BacktesterService;
 import com.skew.engine.service.CommentaryService;
 import com.skew.engine.service.DatabaseSeederService;
+import com.skew.engine.service.TradingAgentsClientService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +51,7 @@ public class SkewEngineController {
     private final AlpacaService           alpacaService;
     private final CommentaryService       commentaryService;
     private final OptionTickConsumer      optionTickConsumer;
+    private final TradingAgentsClientService tradingAgentsClientService;
 
     private String activeFeed = "SIMULATOR"; // SIMULATOR, REAL
 
@@ -61,7 +63,8 @@ public class SkewEngineController {
                                 LivePositionRepository livePositionRepository,
                                 AlpacaService alpacaService,
                                 CommentaryService commentaryService,
-                                OptionTickConsumer optionTickConsumer) {
+                                OptionTickConsumer optionTickConsumer,
+                                TradingAgentsClientService tradingAgentsClientService) {
         this.skewRecordRepository  = skewRecordRepository;
         this.backtesterService     = backtesterService;
         this.simulatorProducer     = simulatorProducer;
@@ -71,6 +74,7 @@ public class SkewEngineController {
         this.alpacaService         = alpacaService;
         this.commentaryService     = commentaryService;
         this.optionTickConsumer    = optionTickConsumer;
+        this.tradingAgentsClientService = tradingAgentsClientService;
     }
 
     // -------------------------------------------------------------------------
@@ -161,6 +165,7 @@ public class SkewEngineController {
         status.put("openPositions",     openCount);
         status.put("alpacaConfigured",  alpacaService.isConfigured());
         status.put("geminiConfigured",  commentaryService.isConfigured());
+        status.put("tradingAgentsEnabled", tradingAgentsClientService.isEnabled());
         return ResponseEntity.ok(status);
     }
 
@@ -288,5 +293,27 @@ public class SkewEngineController {
             logger.error("Failed to seed from Schwab: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 5: Optional TradingAgents Integration Endpoints
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/trading-agents/status")
+    public ResponseEntity<Map<String, Object>> getTradingAgentsStatus() {
+        return ResponseEntity.ok(Map.of(
+                "enabled", tradingAgentsClientService.isEnabled(),
+                "serviceUrl", tradingAgentsClientService.getServiceUrl()
+        ));
+    }
+
+    @PostMapping("/trading-agents/toggle")
+    public ResponseEntity<Map<String, Object>> toggleTradingAgents(@RequestParam boolean enabled) {
+        tradingAgentsClientService.setEnabled(enabled);
+        logger.info("TradingAgents mode toggled to: {}", enabled);
+        return ResponseEntity.ok(Map.of(
+                "enabled", enabled,
+                "message", enabled ? "TradingAgents analysis enabled" : "TradingAgents analysis disabled (using Gemini / heuristics)"
+        ));
     }
 }

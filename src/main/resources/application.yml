@@ -74,6 +74,13 @@ alpaca:
 alphavantage:
   api-key: ${ALPHAVANTAGE_API_KEY:}
 
+discord:
+  bot:
+    token: ${DISCORD_BOT_TOKEN:}
+    channel: ${DISCORD_BOT_CHANNEL:}
+    guild: ${DISCORD_BOT_GUILD:}
+
+
 trading:
   lookback-ticks: 10
   holding-ticks: 10
@@ -87,6 +94,10 @@ trading:
   min-agent-confidence: 0.5
   signal-consumer:
     concurrency: 3
+  # Phase 5 External TradingAgents Client
+  agents:
+    enabled: false
+    service-url: ${TRADING_AGENTS_URL:http://localhost:8000/analyze}
 
 resilience4j:
   circuitbreaker:
@@ -100,6 +111,10 @@ resilience4j:
         slidingWindowSize: 5
         failureRateThreshold: 60
         waitDurationInOpenState: 60s
+      tradingAgentsClientService:
+        slidingWindowSize: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
   retry:
     instances:
       alpacaService:
@@ -108,3 +123,7 @@ resilience4j:
       newsService:
         maxAttempts: 2
         waitDuration: 2s
+      tradingAgentsClientService:
+        maxAttempts: 1
+        waitDuration: 500ms
+

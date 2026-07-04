@@ -1,12 +1,16 @@
 package com.skew.engine.service;
 
 import com.skew.engine.domain.LivePosition;
+import com.skew.engine.domain.Leg;
+import com.skew.engine.domain.Strategy;
 import com.skew.engine.repository.LivePositionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 /**
  * The <strong>sole component</strong> allowed to call Alpaca order endpoints.
@@ -133,5 +137,64 @@ public class OrderManagerService {
         livePositionRepository.save(pos);
         logger.info("🔒 OrderManagerService: closed {} P&L=${}", pos.getOptionSymbol(),
                 String.format("%.2f", pos.getProfitLoss()));
+    }
+
+    /**
+     * Executes multi-leg spread strategy legs on Alpaca paper trading.
+     */
+    public void executeSpreadStrategy(Strategy strategy) {
+        if (!alpacaService.isConfigured()) {
+            logger.info("OrderManagerService: Alpaca paper trading not configured, skipping broker execution for strategy #{}", strategy.getId());
+            return;
+        }
+        logger.info("OrderManagerService: Executing multi-leg spread strategy #{} ({}) across {} legs", strategy.getId(), strategy.getStrategy(), strategy.getLegs().size());
+        for (Leg leg : strategy.getLegs()) {
+            String symbol = resolveOrBuildContractSymbol(strategy.getTicker(), leg.getOptionType(), leg.getStrikePrice(), leg.getExpiration());
+            int qty = Math.abs(leg.getQuantity());
+            if (leg.getQuantity() > 0) {
+                String orderId = alpacaService.submitBuyOrder(symbol, qty);
+                logger.info("Spread leg BUY {} x{}: orderId={}", symbol, qty, orderId);
+            } else if (leg.getQuantity() < 0) {
+                String orderId = alpacaService.submitSellOrder(symbol, qty);
+                logger.info("Spread leg SELL {} x{}: orderId={}", symbol, qty, orderId);
+            }
+        }
+    }
+
+    /**
+     * Closes multi-leg spread strategy legs on Alpaca paper trading and returns total realized P&L.
+     */
+    public double closeSpreadStrategy(Strategy strategy) {
+        logger.info("OrderManagerService: Closing multi-leg spread strategy #{} ({})", strategy.getId(), strategy.getStrategy());
+        double totalRealizedPnl = 0.0;
+        for (Leg leg : strategy.getLegs()) {
+            String symbol = resolveOrBuildContractSymbol(strategy.getTicker(), leg.getOptionType(), leg.getStrikePrice(), leg.getExpiration());
+            int qty = Math.abs(leg.getQuantity());
+            if (alpacaService.isConfigured()) {
+                if (leg.getQuantity() > 0) {
+                    alpacaService.submitSellOrder(symbol, qty); // sell to close long leg
+                } else if (leg.getQuantity() < 0) {
+                    alpacaService.submitBuyOrder(symbol, qty);  // buy to close short leg
+                }
+            }
+            double exitPrice = alpacaService.getLatestOptionPrice(symbol);
+            if (exitPrice <= 0.0) {
+                exitPrice = leg.getEntryPrice() != null ? leg.getEntryPrice() : 0.0;
+            }
+            double legEntry = leg.getEntryPrice() != null ? leg.getEntryPrice() : 0.0;
+            // P&L per leg: (exit - entry) * qty * 100
+            double legPnl = (exitPrice - legEntry) * leg.getQuantity() * 100.0;
+            totalRealizedPnl += legPnl;
+        }
+        return totalRealizedPnl;
+    }
+
+    private String resolveOrBuildContractSymbol(String ticker, String optionType, double strike, LocalDate expiration) {
+        String baseTicker = (ticker != null && ticker.startsWith("SPX")) ? "SPY" : (ticker != null ? ticker : "SPY");
+        double adjustedStrike = (ticker != null && ticker.startsWith("SPX")) ? Math.round(strike / 10.0) : strike;
+        LocalDate exp = expiration != null ? expiration : LocalDate.now().plusDays(30);
+        String expStr = exp.format(DateTimeFormatter.ofPattern("yyMMdd"));
+        String typeChar = "put".equalsIgnoreCase(optionType) ? "P" : "C";
+        return "%-6s%s%s%08d".formatted(baseTicker, expStr, typeChar, (int) Math.round(adjustedStrike * 1000)).replaceAll("\\s+", "");
     }
 }
