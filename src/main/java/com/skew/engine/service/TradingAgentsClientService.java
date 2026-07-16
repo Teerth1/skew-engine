@@ -90,7 +90,13 @@ public class TradingAgentsClientService {
 
         List<String> headlines = recentNews.stream()
                 .limit(5)
-                .map(NewsArticle::getTitle)
+                .map(a -> {
+                    String sentiment = (a.getRawSentiment() != null && !a.getRawSentiment().isBlank()) ? a.getRawSentiment() : "N/A";
+                    return "[%s] %s (Sentiment: %s)".formatted(
+                            a.getSource() != null ? a.getSource() : "Unknown Source",
+                            a.getTitle(),
+                            sentiment);
+                })
                 .collect(Collectors.toList());
         payload.put("recentNews", headlines);
         payload.put("currentPositions", openPositions);

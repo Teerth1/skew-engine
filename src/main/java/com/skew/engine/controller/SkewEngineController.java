@@ -52,6 +52,7 @@ public class SkewEngineController {
     private final CommentaryService       commentaryService;
     private final OptionTickConsumer      optionTickConsumer;
     private final TradingAgentsClientService tradingAgentsClientService;
+    private final com.skew.engine.service.SchwabDataGrabberService schwabDataGrabberService;
 
     private String activeFeed = "SIMULATOR"; // SIMULATOR, REAL
 
@@ -64,7 +65,8 @@ public class SkewEngineController {
                                 AlpacaService alpacaService,
                                 CommentaryService commentaryService,
                                 OptionTickConsumer optionTickConsumer,
-                                TradingAgentsClientService tradingAgentsClientService) {
+                                TradingAgentsClientService tradingAgentsClientService,
+                                com.skew.engine.service.SchwabDataGrabberService schwabDataGrabberService) {
         this.skewRecordRepository  = skewRecordRepository;
         this.backtesterService     = backtesterService;
         this.simulatorProducer     = simulatorProducer;
@@ -75,6 +77,7 @@ public class SkewEngineController {
         this.commentaryService     = commentaryService;
         this.optionTickConsumer    = optionTickConsumer;
         this.tradingAgentsClientService = tradingAgentsClientService;
+        this.schwabDataGrabberService = schwabDataGrabberService;
     }
 
     // -------------------------------------------------------------------------
@@ -316,4 +319,43 @@ public class SkewEngineController {
                 "message", enabled ? "TradingAgents analysis enabled" : "TradingAgents analysis disabled (using Gemini / heuristics)"
         ));
     }
+
+    // -------------------------------------------------------------------------
+    // Schwab Data Grabber & Snapshot Archive Endpoints
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/schwab/snapshots")
+    public ResponseEntity<List<Map<String, Object>>> listSchwabSnapshots() {
+        return ResponseEntity.ok(schwabDataGrabberService.listSnapshots());
+    }
+
+    @PostMapping("/schwab/grab")
+    public ResponseEntity<Map<String, Object>> triggerSchwabGrab(@RequestParam(defaultValue = "$SPX") String symbol) {
+        String path = schwabDataGrabberService.grabAndArchive(symbol);
+        if (path != null) {
+            return ResponseEntity.ok(Map.of(
+                    "symbol", symbol,
+                    "status", "SUCCESS",
+                    "archivePath", path,
+                    "message", "Successfully grabbed and archived option chain for " + symbol
+            ));
+        } else {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "symbol", symbol,
+                    "status", "FAILED",
+                    "message", "Failed to grab option chain (ensure Schwab OAuth is authorized)"
+            ));
+        }
+    }
+
+    @PostMapping("/schwab/grabber/toggle")
+    public ResponseEntity<Map<String, Object>> toggleSchwabGrabber(@RequestParam boolean enabled) {
+        schwabDataGrabberService.setGrabberEnabled(enabled);
+        logger.info("Schwab scheduled data grabber toggled to: {}", enabled);
+        return ResponseEntity.ok(Map.of(
+                "enabled", enabled,
+                "message", enabled ? "Scheduled Schwab data grabber enabled (every 5 mins)" : "Scheduled Schwab data grabber disabled"
+        ));
+    }
 }
+

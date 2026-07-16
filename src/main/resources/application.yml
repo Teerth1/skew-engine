@@ -98,6 +98,26 @@ trading:
   agents:
     enabled: false
     service-url: ${TRADING_AGENTS_URL:http://localhost:8000/analyze}
+  # Phase 6 — dynamic position sizing (fractional Kelly)
+  sizing:
+    enabled: true
+    kelly-fraction: 0.5
+    bankroll: 10000.0
+    max-risk-per-trade: 1000.0
+    max-contracts: 5
+  # Phase 6 — dynamic exits (take-profit / stop-loss / trailing / GEX walls)
+  exit:
+    take-profit: 0.50
+    stop-loss: 0.25
+    trailing-activation: 0.20
+    trailing-drawdown: 0.15
+    gex-wall-exit: true
+    gex-max-age-minutes: 30
+  # Phase 6 — macro event & earnings blackout gating
+  macro:
+    enabled: true
+    blackout-hours: 48
+    calendar-file: data/macro_calendar.json
 
 resilience4j:
   circuitbreaker:

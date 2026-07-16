@@ -79,21 +79,22 @@ public class CommentaryService {
     private String buildPrompt(String signalType, double spot, double putIv, double callIv,
                                double skew, double spotReturn, double skewChange) {
         String direction = "BEARISH_DIVERGENCE".equals(signalType)
-                ? "rallied +%.2f%% while skew widened +%.2f%%".formatted(spotReturn * 100, skewChange * 100)
-                : "declined %.2f%% while skew compressed %.2f%%".formatted(spotReturn * 100, Math.abs(skewChange * 100));
+                ? "rallied +%.2f%% while put-call skew widened +%.2f%%".formatted(spotReturn * 100, skewChange * 100)
+                : "declined %.2f%% while put-call skew compressed %.2f%%".formatted(spotReturn * 100, Math.abs(skewChange * 100));
 
         return """
-                You are a professional options market analyst specializing in volatility and S&P 500 skew.
-                Summarize the following signal in 1-2 concise sentences for a trading dashboard.
-                Focus on what this skew divergence signals about market participant hedging behavior.
-                Do NOT use generic disclaimers. Be direct and analytical.
+                You are an institutional options desk strategist specializing in S&P 500 volatility skew, Greek exposure, and dealer hedging mechanics.
+                Write a concise, punchy 1-2 sentence dashboard commentary interpreting the following volatility skew divergence signal.
                 
-                Signal: %s
-                SPX Spot: %.0f
-                2-Week move: %s
-                Put IV (OTM): %.1f%%
-                Call IV (OTM): %.1f%%
-                Skew (Put-Call IV): %.1f%%
+                Guidelines:
+                - Explain what this divergence reveals about institutional hedging demand, downside tail-risk pricing, or volatility risk premium absorption.
+                - Be direct, professional, and analytical. Absolutely NO generic financial disclaimers or filler phrases.
+                
+                Signal Event: %s
+                SPX Spot Level: %.0f
+                2-Week Price & Skew Move: %s
+                OTM Put IV: %.1f%%  |  OTM Call IV: %.1f%%
+                Net Put-Call Skew: %.1f%%
                 """.formatted(
                 signalType.replace('_', ' '),
                 spot,

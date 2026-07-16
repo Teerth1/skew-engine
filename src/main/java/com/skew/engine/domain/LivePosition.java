@@ -49,6 +49,14 @@ public class LivePosition {
     /** Latest fetched option mid-price for unrealized P&L computation. */
     private double currentOptionPrice;
 
+    /** Highest option mid-price seen while open (drives the trailing stop). */
+    private double peakOptionPrice;
+
+    /** Why the position was closed: TAKE_PROFIT, STOP_LOSS, TRAILING_STOP,
+     *  GEX_WALL_BREACH, MAX_HOLDING, MANUAL (null while open). */
+    @Column(length = 30)
+    private String exitReason;
+
     /** Realized or unrealized P&L in USD. */
     private double profitLoss;
 
@@ -100,13 +108,27 @@ public class LivePosition {
     public void recordEntryPrice(double entryOptionPrice) {
         this.entryOptionPrice = entryOptionPrice;
         this.currentOptionPrice = entryOptionPrice;
+        this.peakOptionPrice = entryOptionPrice;
     }
 
-    /** Updates current market price and recomputes unrealized P&L. */
+    /** Updates current market price, high-water mark, and unrealized P&L. */
     public void updatePnl(double latestOptionPrice) {
         this.currentOptionPrice = latestOptionPrice;
+        this.peakOptionPrice = Math.max(this.peakOptionPrice, latestOptionPrice);
         // P&L = (current price - entry price) × contracts × 100 (shares per contract)
         this.profitLoss = (latestOptionPrice - entryOptionPrice) * quantity * 100.0;
+    }
+
+    /** Unrealized return relative to entry premium, e.g. 0.5 = +50%. */
+    public double unrealizedReturn() {
+        if (entryOptionPrice <= 0.0) return 0.0;
+        return (currentOptionPrice - entryOptionPrice) / entryOptionPrice;
+    }
+
+    /** Drawdown from the high-water mark, e.g. 0.15 = 15% below the peak. */
+    public double drawdownFromPeak() {
+        if (peakOptionPrice <= 0.0) return 0.0;
+        return (peakOptionPrice - currentOptionPrice) / peakOptionPrice;
     }
 
     /** Marks the position as closed with final P&L. */
@@ -147,6 +169,12 @@ public class LivePosition {
 
     public double getCurrentOptionPrice() { return currentOptionPrice; }
     public void setCurrentOptionPrice(double currentOptionPrice) { this.currentOptionPrice = currentOptionPrice; }
+
+    public double getPeakOptionPrice() { return peakOptionPrice; }
+    public void setPeakOptionPrice(double peakOptionPrice) { this.peakOptionPrice = peakOptionPrice; }
+
+    public String getExitReason() { return exitReason; }
+    public void setExitReason(String exitReason) { this.exitReason = exitReason; }
 
     public double getProfitLoss() { return profitLoss; }
     public void setProfitLoss(double profitLoss) { this.profitLoss = profitLoss; }

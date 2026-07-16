@@ -76,16 +76,27 @@ public class NewsSentimentService {
     private SentimentBand callGemini(List<NewsArticle> articles, String ticker) {
         String headlines = articles.stream()
                 .limit(5)
-                .map(a -> "- [%s] %s (sentiment: %s)".formatted(
-                        a.getSource(), a.getTitle(), a.getRawSentiment()))
+                .map(a -> {
+                    String sentiment = (a.getRawSentiment() != null && !a.getRawSentiment().isBlank()) ? a.getRawSentiment() : "N/A";
+                    String summary = (a.getSummary() != null && !a.getSummary().isBlank()) ? " | Summary: " + a.getSummary() : "";
+                    return "- [%s] %s (Provider Sentiment: %s)%s".formatted(
+                            a.getSource() != null ? a.getSource() : "Unknown Source",
+                            a.getTitle(),
+                            sentiment,
+                            summary);
+                })
                 .collect(Collectors.joining("\n"));
 
         String prompt = """
-                You are a financial analyst. Classify the overall market sentiment for %s
-                based on these recent news headlines.
-                Choose exactly one of: BULLISH, MILDLY_BULLISH, NEUTRAL, MIXED, MILDLY_BEARISH, BEARISH.
+                You are an expert financial analyst specializing in macroeconomic trends and equity sentiment.
+                Classify the overall market sentiment for %s based on the following recent news events and summaries.
                 
-                Headlines:
+                Guidelines:
+                - Evaluate macroeconomic drivers (e.g., Federal Reserve rate expectations, inflation data, geopolitical risk, earnings reports).
+                - Weigh both provider sentiment scores and narrative summaries.
+                - Choose EXACTLY ONE of the following structured bands: BULLISH, MILDLY_BULLISH, NEUTRAL, MIXED, MILDLY_BEARISH, BEARISH.
+                
+                Recent News Events:
                 %s
                 """.formatted(ticker, headlines);
 

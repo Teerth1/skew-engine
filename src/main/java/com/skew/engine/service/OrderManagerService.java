@@ -34,13 +34,16 @@ public class OrderManagerService {
     private final AlpacaService          alpacaService;
     private final CommentaryService      commentaryService;
     private final LivePositionRepository livePositionRepository;
+    private final PositionSizingService  positionSizingService;
 
     public OrderManagerService(AlpacaService alpacaService,
                                CommentaryService commentaryService,
-                               LivePositionRepository livePositionRepository) {
+                               LivePositionRepository livePositionRepository,
+                               PositionSizingService positionSizingService) {
         this.alpacaService          = alpacaService;
         this.commentaryService      = commentaryService;
         this.livePositionRepository = livePositionRepository;
+        this.positionSizingService  = positionSizingService;
     }
 
     // -------------------------------------------------------------------------
@@ -76,10 +79,8 @@ public class OrderManagerService {
                 intent.signalType(), intent.optionType(),
                 decision.confidence(), riskDecision.reason());
 
-        // (a) Submit BUY order on Alpaca
-        String orderId = alpacaService.submitBuyOrder(intent.optionSymbol(), intent.quantity());
-
-        // (b) Fetch entry price (falls back to BS approximation if price unavailable)
+        // (a) Fetch entry price first — sizing needs it
+        //     (falls back to BS approximation if price unavailable)
         double entryPrice = alpacaService.getLatestOptionPrice(intent.optionSymbol());
         if (entryPrice <= 0.0) {
             double entryIv = "put".equalsIgnoreCase(intent.optionType())
@@ -88,7 +89,14 @@ public class OrderManagerService {
                     * Math.sqrt(30.0 / 365.0 / (2 * Math.PI));
         }
 
-        // (c) Generate commentary (includes agent rationale)
+        // (b) Dynamic fractional-Kelly sizing (agent conviction × historical edge)
+        int quantity = positionSizingService.computeQuantity(
+                intent, decision.confidence(), entryPrice);
+
+        // (c) Submit BUY order on Alpaca
+        String orderId = alpacaService.submitBuyOrder(intent.optionSymbol(), quantity);
+
+        // (d) Generate commentary (includes agent rationale)
         String commentary = commentaryService.generateCommentary(
                 intent.signalType(), intent.spotPrice(),
                 intent.putIv(), intent.callIv(),
@@ -100,12 +108,12 @@ public class OrderManagerService {
             commentary += " Agent: " + decision.rationale();
         }
 
-        // (d) Build and persist LivePosition
+        // (e) Build and persist LivePosition
         LivePosition pos = new LivePosition(
                 LocalDateTime.now(),
                 intent.optionSymbol(),
                 intent.optionType().toUpperCase(),
-                intent.quantity(),
+                quantity,
                 intent.spotPrice(),
                 intent.signalType());
 

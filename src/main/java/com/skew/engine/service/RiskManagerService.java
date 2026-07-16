@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Deterministic risk gate — the ONLY component that approves or rejects a
@@ -66,9 +67,12 @@ public class RiskManagerService {
     // -------------------------------------------------------------------------
 
     private final LivePositionRepository livePositionRepository;
+    private final MacroCalendarService   macroCalendarService;
 
-    public RiskManagerService(LivePositionRepository livePositionRepository) {
+    public RiskManagerService(LivePositionRepository livePositionRepository,
+                              MacroCalendarService macroCalendarService) {
         this.livePositionRepository = livePositionRepository;
+        this.macroCalendarService   = macroCalendarService;
     }
 
     // -------------------------------------------------------------------------
@@ -148,8 +152,23 @@ public class RiskManagerService {
                     .formatted(decision.rating()));
         }
 
+        // 9. Macro event / earnings blackout (FOMC, CPI, NFP, ticker earnings)
+        Optional<String> blackout = macroCalendarService.blackoutReason(
+                extractUnderlying(intent.optionSymbol()));
+        if (blackout.isPresent()) {
+            return RiskDecision.reject("Macro blackout — " + blackout.get());
+        }
+
         logger.info("RiskManagerService: ✅ All checks passed for {} (confidence={:.2f})",
                 intent.signalType(), decision.confidence());
         return RiskDecision.approve();
+    }
+
+    /** Leading letters of an OCC symbol, e.g. "SPY260620P00500000" → "SPY". */
+    private static String extractUnderlying(String occSymbol) {
+        if (occSymbol == null) return "";
+        int i = 0;
+        while (i < occSymbol.length() && Character.isLetter(occSymbol.charAt(i))) i++;
+        return occSymbol.substring(0, i);
     }
 }

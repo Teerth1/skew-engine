@@ -1,0 +1,12 @@
+# Skew Engine ML + TradingAgents service
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+scikit-learn>=1.5
+xgboost>=2.1
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.8
+# Optional — LLM-backed agent reasoning (deterministic fallback without them)
+langgraph>=0.2
+langchain-google-genai>=2.0

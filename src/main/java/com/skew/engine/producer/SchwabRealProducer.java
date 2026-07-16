@@ -21,14 +21,18 @@ public class SchwabRealProducer {
 
     private final KafkaTemplate<String, OptionTickEvent> kafkaTemplate;
     private final SchwabApiService schwabApiService;
+    private final com.skew.engine.service.SchwabDataGrabberService schwabDataGrabberService;
     private boolean streamingEnabled = false; // Off by default until activated by user
     private double spotPrice = 5000.0;
     private double putIv = 0.20;
     private double callIv = 0.15;
 
-    public SchwabRealProducer(KafkaTemplate<String, OptionTickEvent> kafkaTemplate, SchwabApiService schwabApiService) {
+    public SchwabRealProducer(KafkaTemplate<String, OptionTickEvent> kafkaTemplate,
+                              SchwabApiService schwabApiService,
+                              com.skew.engine.service.SchwabDataGrabberService schwabDataGrabberService) {
         this.kafkaTemplate = kafkaTemplate;
         this.schwabApiService = schwabApiService;
+        this.schwabDataGrabberService = schwabDataGrabberService;
     }
 
     public void setStreamingEnabled(boolean enabled) {
@@ -53,6 +57,9 @@ public class SchwabRealProducer {
 
         try {
             Map<String, Object> chain = schwabApiService.getOptionsChain("$SPX");
+            if (chain != null && !chain.isEmpty()) {
+                schwabDataGrabberService.archiveSnapshot("$SPX", chain);
+            }
             processOptionsChain(chain);
         } catch (Exception e) {
             logger.error("Failed to query real-time options chain from Schwab: {}", e.getMessage());

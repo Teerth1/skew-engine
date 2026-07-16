@@ -97,7 +97,7 @@ public class AgentDecisionService {
 
         double confidence = Math.max(0.0, Math.min(1.0, response.confidence()));
 
-        logger.info("AgentDecisionService: {} → rating={} confidence={:.2f}", intent.signalType(), rating, confidence);
+        logger.info("AgentDecisionService: {} → rating={} confidence={}", intent.signalType(), rating, String.format("%.2f", confidence));
         return new AgentDecision(rating, confidence, response.rationale(), response.riskNotes());
     }
 
@@ -108,7 +108,8 @@ public class AgentDecisionService {
 
         StringBuilder history = new StringBuilder();
         if (!similarTrades.isEmpty()) {
-            history.append("\n## Historical Context (Similar Past Trades)\n");
+            history.append("\n## Historical Context (Similar Past Trades & Outcomes)\n");
+            history.append("Review these past similar trades and their realized P&L to avoid repeating historical failures or to capitalize on proven setups:\n");
             for (int i = 0; i < similarTrades.size(); i++) {
                 StrategyDecisionLog log = similarTrades.get(i);
                 history.append("%d. %s".formatted(i + 1, log.getTradeMemorySummary()));
@@ -117,18 +118,29 @@ public class AgentDecisionService {
 
         return """
                 You are an options market analyst advisory agent. 
-                Evaluate the following trading signal.
-                You have tools available to fetch recent news (to gauge sentiment) and check open paper positions.
-                Decide if you need these tools, analyze the data, and return a JSON object representing your decision.
+                Evaluate the following trading signal and produce an advisory recommendation.
                 
-                Valid ratings: BUY, OVERWEIGHT, HOLD, UNDERWEIGHT, SELL
+                ## Available Tools (You MUST use tools when relevant):
+                1. `getGexProfile(ticker)`: Check Gamma Exposure (Call Wall resistance, Put Wall support, and Zero Flip volatility boundary). Avoid recommending BUY/OVERWEIGHT if spot is directly into a Call Wall resistance or below a negative gamma Zero Flip without strong confirmation.
+                2. `getTheoreticalOptionPrice(s, k, daysToExpire, volatility, optionType)`: Calculate Black-Scholes fair value to check if the option is mispriced relative to market implied volatility.
+                3. `getNewsForTicker(ticker)`: Check recent macroeconomic and company news to ensure narrative sentiment aligns with the trade direction.
+                4. `getOpenPositionCount()`: Check current open paper positions against risk limits before advising new exposure.
                 
+                ## Evaluation Guidelines:
+                - Synthesize volatility skew divergence, Greeks, GEX resistance/support, option pricing, and news sentiment.
+                - Review Historical Context: If similar past trades resulted in negative realized P&L, explain why this trade is different or lower your rating/confidence.
+                - Assign a rating: BUY, OVERWEIGHT, HOLD, UNDERWEIGHT, SELL.
+                - Assign a confidence score between 0.00 and 1.00 (only assign > 0.70 if both GEX structure and news sentiment confirm the signal).
+                - Provide a concise analytical rationale and explicit risk notes.
+                - Return ONLY a JSON object matching the requested schema.
+                
+                ## Current Market Signal:
                 Signal: %s
                 Ticker: %s
-                Option type to trade: %s
+                Option Type to Trade: %s
                 SPX Spot: %.0f
-                Spot return over lookback: %.2f%%
-                Skew change over lookback: %.2f%%
+                Spot Return over lookback: %.2f%%
+                Skew Change over lookback: %.2f%%
                 Put IV: %.1f%%  |  Call IV: %.1f%%
                 %s
                 """.formatted(
